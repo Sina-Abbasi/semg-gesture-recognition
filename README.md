@@ -48,7 +48,7 @@ This project incorporates a **Retrieval-Augmented Generation (RAG)** pipeline po
 
 You do not need to install Python or any dependencies manually. Simply pull and run the pre-built Docker image from Docker Hub:
 
-docker run -d -p 8000:8000 --env-file .env --name semg_app_v2 semg-ai-engine:v2
+docker run -d -p 8000:8000 --env-file .env --name semg_app sina22sas/semg-ai-engine:v2
 
 After running the container, open your browser and go to:
 http://localhost:8000/docs to test the API via Swagger UI.
