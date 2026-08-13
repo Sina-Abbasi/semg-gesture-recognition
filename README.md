@@ -22,20 +22,37 @@ $$RMS = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2}$$
 Measures the average magnitude of the sEMG signal over a time window, serving as a reliable indicator of muscle activity level with lower computational complexity.
 $$MAV = \frac{1}{N} \sum_{i=1}^{N} |x_i|$$
 
+---
+
+## 🧠 Dual-Mode Prediction Engine
+
+The API provides two distinct prediction workflows to accommodate different client requirements:
+
+1. **Pre-extracted Features Endpoint (`/predict/features`):**
+   * Designed for edge devices or clients that perform feature extraction locally.
+   * Directly accepts pre-calculated **RMS (Root Mean Square)** and **MAV (Mean Absolute Value)** features to minimize server payload and computing latency.
+
+2. **Raw sEMG Signal Endpoint (`/predict/raw`):**
+   * Designed for end-to-end integration where raw multichannel sEMG signal arrays are transmitted directly.
+   * The server dynamically applies on-the-fly signal processing, extracting time-domain features (RMS & MAV) before feeding them into the trained Random Forest classifier.
+
+---
+
+## 📚 Project RAG Knowledge Assistant
+
+This project incorporates a **Retrieval-Augmented Generation (RAG)** pipeline powered by **LangChain**, **BM25 Retriever**, and **Groq Cloud (Llama 3.3 70B)**:
+
+* **Contextual Documentation Indexing:** Automatically indexes project documentation (`README.md` and report files) using lightweight BM25 chunk retrieval.
+* **Interactive AI Assistant (`/rag/ask`):** Allows developers and users to query project mechanics, signal processing formulas (RMS/MAV), model architecture details, and setup instructions in natural language.
 ## Quick Start with Docker
 
 You do not need to install Python or any dependencies manually. Simply pull and run the pre-built Docker image from Docker Hub:
 
-docker run -d -p 8000:8000 --name semg-app sina22sas/semg-api:v1
+docker run -d -p 8000:8000 --env-file .env --name semg_app_v2 semg-ai-engine:v2
 
 After running the container, open your browser and go to:
 http://localhost:8000/docs to test the API via Swagger UI.
 
-## API Endpoints
-
-- GET / : Health check endpoint
-- POST /predict : Classify gesture from 16 pre-extracted features (RMS and MAV)
-- POST /predict-raw : Process raw sEMG signals (8 channels), extract features, and predict gesture
 
 ## Supported Gestures
 

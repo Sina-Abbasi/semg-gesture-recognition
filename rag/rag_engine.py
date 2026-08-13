@@ -1,85 +1,73 @@
 import os
-from dotenv import load_dotenv
-from groq import Groq
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_community.retrievers import BM25Retriever
+from groq import Groq
 
-load_dotenv()
 
 class ProjectRAGEngine:
     def __init__(self, docs_path: str = "."):
         self.docs_path = docs_path
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="all-MiniLM-L6-v2"
-        )
-        self.vector_store = None
-        self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-
-    def build_index(self):
-        documents = []
-        target_files = ["README.md"]
+        self.retriever = None
         
+        # Initialize Groq Client
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY environment variable not set.")
+        self.client = Groq(api_key=api_key)
+
+    def load_documents(self):
+        docs = []
+        # Load README.md 
+        readme_path = os.path.join(self.docs_path, "README.md")
+        if os.path.exists(readme_path):
+            loader = TextLoader(readme_path, encoding="utf-8")
+            docs.extend(loader.load())
+
+        # Load any .md or .txt files in reports folder
         reports_dir = os.path.join(self.docs_path, "reports")
         if os.path.exists(reports_dir):
             for file in os.listdir(reports_dir):
-                if file.endswith(".txt") or file.endswith(".md"):
-                    target_files.append(os.path.join("reports", file))
+                if file.endswith(".md") or file.endswith(".txt"):
+                    file_path = os.path.join(reports_dir, file)
+                    loader = TextLoader(file_path, encoding="utf-8")
+                    docs.extend(loader.load())
+        return docs
 
-        for file_path in target_files:
-            full_path = os.path.join(self.docs_path, file_path)
-            if os.path.exists(full_path):
-                loader = TextLoader(full_path, encoding="utf-8")
-                documents.extend(loader.load())
+    def build_index(self):
+        docs = self.load_documents()
+        if not docs:
+            print("No documentation files found to index.")
+            return
 
-        if not documents:
-            raise FileNotFoundError("No documentation files found for RAG engine.")
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+        chunks = text_splitter.split_documents(docs)
 
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=300,
-            chunk_overlap=30
-        )
-        chunks = text_splitter.split_documents(documents)
-        self.vector_store = FAISS.from_documents(chunks, self.embeddings)
+        # Ultra-lightweight BM25 Search Engine (No PyTorch/SentenceTransformers needed!)
+        self.retriever = BM25Retriever.from_documents(chunks)
+        self.retriever.k = 3
+        print(f"RAG Index built successfully with {len(chunks)} chunks using BM25!")
 
-    def ask(self, user_question: str) -> str:
-        if not self.vector_store:
-            raise ValueError("Vector store is empty. Call build_index() first.")
+    def ask(self, query: str) -> str:
+        if not self.retriever:
+            return "RAG Index is not initialized or no documents were found."
 
-        # 1. Retrieve relevant context from documentation
-        results = self.vector_store.similarity_search(user_question, k=2)
-        context = "\n---\n".join([doc.page_content for doc in results])
+        retrieved_docs = self.retriever.invoke(query)
+        context = "\n\n".join([doc.page_content for doc in retrieved_docs])
 
-        # 2. Generate concise answer using Llama 3 via Groq
-        prompt = f"""
-You are an expert AI assistant for a robotics and sEMG gesture recognition project.
-Answer the user's question accurately based ONLY on the provided context below.
-Keep your response concise, clear, and limited to 1 or 2 sentences maximum.
+        prompt = f"""You are an AI assistant helping with a software project.
+Answer the following question based ONLY on the provided context.
 
-Context from documentation:
+Context:
 {context}
 
-Question: {user_question}
-Answer:
-"""
+Question: {query}
+Answer:"""
 
-        response = self.groq_client.chat.completions.create(
+        response = self.client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            model="llama-3.1-8b-instant",
             temperature=0.2,
-            max_tokens=150
         )
 
-        return response.choices[0].message.content.strip()
-
-if __name__ == "__main__":
-    rag = ProjectRAGEngine(docs_path=".")
-    rag.build_index()
-    
-    question = "How is RMS calculated and what features are extracted?"
-    print(f"\n Question: {question}\n")
-    
-    answer = rag.ask(question)
-    print(" Smart LLM Answer:\n")
-    print(answer)
+        return response.choices[0].message.content

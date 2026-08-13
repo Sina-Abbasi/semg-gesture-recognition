@@ -25,7 +25,7 @@ app = FastAPI(
 )
 
 # ----------------------------------------------------
-# 2. Load ML Model
+# 2. Loading ML Model
 # ----------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 model_path = os.path.abspath(
@@ -44,7 +44,7 @@ GESTURE_MAP = {
 }
 
 # ----------------------------------------------------
-# 3. Initialize RAG Engine
+# 3. Initializing RAG Engine
 # ----------------------------------------------------
 rag_engine = ProjectRAGEngine(docs_path=".")
 try:
@@ -53,7 +53,7 @@ except Exception as e:
     print(f"Warning: RAG index build failed: {e}")
 
 # ----------------------------------------------------
-# 4. Schemas with Rich Examples
+# 4. Schemas with Examples
 # ----------------------------------------------------
 class FeatureRequest(BaseModel):
     features: list[float] = Field(
