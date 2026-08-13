@@ -1,0 +1,17 @@
+sEMG Gesture Recognition - Model Evaluation
+=============================================
+
+Test Accuracy: 91.01%
+
+                  precision    recall  f1-score   support
+
+            Rest     1.0000    1.0000    1.0000        15
+            Fist     0.9333    1.0000    0.9655        14
+         Flexion     0.9333    0.8750    0.9032        16
+       Extension     0.9167    0.7857    0.8462        14
+Radial Deviation     0.8235    0.9333    0.8750        15
+ Ulnar Deviation     0.8667    0.8667    0.8667        15
+
+        accuracy                         0.9101        89
+       macro avg     0.9123    0.9101    0.9094        89
+    weighted avg     0.9122    0.9101    0.9094        89
