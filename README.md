@@ -1,8 +1,26 @@
-# sEMG Gesture Recognition System
+# Real-Time sEMG Gesture Recognition for Robotic Arm Control
 
-This project is a Machine Learning pipeline and REST API built with FastAPI to classify hand gestures using surface Electromyography (sEMG) signal features or raw signals.
+This repository presents an end-to-end Machine Learning and Signal Processing pipeline designed to classify human hand gestures using surface Electromyography (sEMG) signals. The primary objective is to translate neuromuscular intentions into discrete control commands for **prosthetic hands and robotic arms**.
 
-The whole application is fully containerized using Docker for seamless execution and deployment.
+---
+
+## 🎯 Project Goal & System Overview
+- **Signal Input:** 8-channel sEMG signals collected during active hand gestures.
+- **Processing Pipeline:** Real-time digital filtering, feature extraction (RMS, MAV,  across 8 channels = 16 features).
+- **Classification Engine:** Random Forest model predicting target gestures with high confidence and minimal latency.
+- **Deployment:** Containerized REST API (FastAPI + Docker) engineered to stream predictions directly to an embedded micro-controller / robotic arm controller.
+
+## 📊 Feature Extraction Methodology
+
+To capture the amplitude and contraction intensity of the sEMG signals across the 8 channels, we extract key time-domain features:
+
+### 1. Root Mean Square (RMS)
+Represents the mean power and physical intensity of the muscle signal. Higher RMS values correlate directly with stronger muscle contractions.
+$$RMS = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2}$$
+
+### 2. Mean Absolute Value (MAV)
+Measures the average magnitude of the sEMG signal over a time window, serving as a reliable indicator of muscle activity level with lower computational complexity.
+$$MAV = \frac{1}{N} \sum_{i=1}^{N} |x_i|$$
 
 ## Quick Start with Docker
 
