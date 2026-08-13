@@ -48,7 +48,14 @@ This project incorporates a **Retrieval-Augmented Generation (RAG)** pipeline po
 
 You do not need to install Python or any dependencies manually. Simply pull and run the pre-built Docker image from Docker Hub:
 
-docker run -d -p 8000:8000 --env-file .env --name semg_app sina22sas/semg-ai-engine:v2
+### 1️⃣ Get a Free API Key (10 seconds)
+Get a free Groq API key (required for the RAG chatbot) from [Groq Console](https://console.groq.com/keys).
+
+### 2️⃣ Run the Docker Container
+Replace `YOUR_GROQ_API_KEY` with your key and run this command in your terminal:
+
+### bash
+docker run -d -p 8000:8000 -e GROQ_API_KEY="YOUR_GROQ_API_KEY" --name semg_app sina22sas/semg-ai-engine:v2
 
 After running the container, open your browser and go to:
 http://localhost:8000 to test the API via Swagger UI.

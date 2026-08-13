@@ -1,6 +1,7 @@
 import os
 import joblib
 import numpy as np
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
@@ -21,7 +22,7 @@ app = FastAPI(
     * **📚 RAG Assistant**: Ask any technical question about signal processing, feature calculation, or architecture.
     """,
     version="2.0.0",
-    docs_url=None,  # Custom dark theme route enabled below
+    docs_url=None,
     redoc_url=None
 )
 
@@ -54,16 +55,18 @@ except Exception as e:
     print(f"Warning: RAG index build failed: {e}")
 
 # ----------------------------------------------------
-# 4. Schemas with Examples
+# 4. Schemas with Examples (Paired RMS & MAV)
 # ----------------------------------------------------
 class FeatureRequest(BaseModel):
     features: list[float] = Field(
         ...,
-        description="16 Time-Domain Features (8 RMS + 8 MAV)",
+        min_length=16,
+        max_length=16,
+        description="16 Time-Domain Features (Paired Interleaved: RMS_ch1, MAV_ch1, ...). Values MUST be within realistic biological bounds (0.0 to 0.01).",
         json_schema_extra={
             "example": [
-                0.24, 0.18, 0.35, 0.42, 0.12, 0.29, 0.31, 0.20, # RMS (8 channels)
-                0.15, 0.11, 0.22, 0.28, 0.08, 0.19, 0.21, 0.14  # MAV (8 channels)
+                0.00045, 0.00035, 0.00021, 0.00018, 0.00030, 0.00025, 0.00015, 0.00012, 
+                0.00018, 0.00015, 0.00022, 0.00018, 0.00055, 0.00045, 0.00028, 0.00022
             ]
         }
     )
@@ -71,12 +74,12 @@ class FeatureRequest(BaseModel):
 class RawSignalRequest(BaseModel):
     raw_signals: list[list[float]] = Field(
         ...,
-        description="Matrix of raw sEMG values (N samples x 8 channels)",
+        description="Matrix of raw sEMG values (N samples x 8 channels). Values MUST be in range -0.01 to 0.01.",
         json_schema_extra={
             "example": [
-                [0.12, -0.05, 0.31, 0.44, -0.11, 0.21, 0.05, -0.02],
-                [0.18, -0.02, 0.29, 0.51, -0.08, 0.25, 0.08, -0.01],
-                [0.22,  0.01, 0.34, 0.48, -0.05, 0.28, 0.10,  0.02]
+                [0.00065, 0.00028, 0.00029, 0.00007, 0.00009, -0.00005, -0.00042, 0.00014],
+                [0.00014, -0.00014, -0.00043, -0.00014, 0.00014, 0.00002, -0.00021, 0.00013],
+                [-0.00061, -0.00022, -0.00019, -0.00016, -0.00016, -0.00035, -0.00109, -0.00068]
             ]
         }
     )
@@ -111,14 +114,16 @@ def dashboard():
             .btn-accent:hover { background: linear-gradient(135deg, #0369a1, #075985); color: white; }
             .btn-success-gradient { background: linear-gradient(135deg, #16a34a, #15803d); color: white; font-weight: 600; border: none; }
             .badge-custom { background-color: #334155; color: #38bdf8; font-weight: 500; font-size: 0.85rem; }
-            .chat-box { height: 300px; overflow-y: auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 15px; }
+            .chat-box { height: 320px; overflow-y: auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 15px; }
             .msg-user { background-color: #0284c7; color: white; border-radius: 12px 12px 0 12px; padding: 8px 14px; margin-bottom: 10px; width: fit-content; max-width: 80%; float: right; clear: both; }
             .msg-bot { background-color: #334155; color: #f8fafc; border-radius: 12px 12px 12px 0; padding: 8px 14px; margin-bottom: 10px; width: fit-content; max-width: 80%; float: left; clear: both; }
             .result-badge { font-size: 1.3rem; font-weight: bold; color: #38bdf8; }
+            .nav-tabs .nav-link { color: #94a3b8; border: none; font-weight: 600; }
+            .nav-tabs .nav-link.active { background-color: #334155; color: #38bdf8; border-radius: 8px 8px 0 0; }
         </style>
     </head>
     <body>
-        <div class="container my-5" style="max-width: 950px;">
+        <div class="container my-5" style="max-width: 1000px;">
             <!-- Header Banner -->
             <div class="card p-4 mb-4 text-center">
                 <h1 class="fw-bold text-info mb-2">🦾 sEMG Gesture AI & RAG Control Center</h1>
@@ -132,23 +137,46 @@ def dashboard():
             </div>
 
             <div class="row g-4">
-                <!-- Section 1: Live Gesture Classification Test -->
+                <!-- Section 1: Dual-Mode Gesture Predictor -->
                 <div class="col-md-6">
                     <div class="card h-100 p-4">
                         <h4 class="fw-bold text-info mb-3"><i class="fa-solid fa-bolt me-2"></i>Live Gesture Predictor</h4>
-                        <p class="text-secondary small">Test the ML model directly using 16 time-domain features (8 RMS + 8 MAV):</p>
                         
-                        <div class="mb-3">
-                            <label class="form-label text-light small">Features Array (16 values):</label>
-                            <textarea id="featureInput" class="form-control bg-dark text-info border-secondary font-monospace" rows="4">[0.24, 0.18, 0.35, 0.42, 0.12, 0.29, 0.31, 0.20, 0.15, 0.11, 0.22, 0.28, 0.08, 0.19, 0.21, 0.14]</textarea>
+                        <!-- Nav Tabs -->
+                        <ul class="nav nav-tabs mb-3" id="predictorTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="features-tab" data-bs-toggle="tab" data-bs-target="#features-panel" type="button" role="tab">16 Features</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="raw-tab" data-bs-toggle="tab" data-bs-target="#raw-panel" type="button" role="tab">Raw Signal (8 Ch)</button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content" id="predictorTabContent">
+                            <!-- Tab 1: 16 Features Input -->
+                            <div class="tab-pane fade show active" id="features-panel" role="tabpanel">
+                                <p class="text-secondary small">Send pre-extracted features (RMS1, MAV1... in range 0.0 to 0.01):</p>
+                                <div class="mb-3">
+                                    <textarea id="featureInput" class="form-control bg-dark text-info border-secondary font-monospace" rows="4">[0.00045, 0.00035, 0.00021, 0.00018, 0.00030, 0.00025, 0.00015, 0.00012, 0.00018, 0.00015, 0.00022, 0.00018, 0.00055, 0.00045, 0.00028, 0.00022]</textarea>
+                                </div>
+                                <button onclick="predictFeatures()" class="btn btn-accent w-100 mb-3"><i class="fa-solid fa-hand me-2"></i> Predict From Features</button>
+                            </div>
+
+                            <!-- Tab 2: Raw Signals Input -->
+                            <div class="tab-pane fade" id="raw-panel" role="tabpanel">
+                                <p class="text-secondary small">Send raw multichannel matrix (N Samples x 8 Channels in range -0.01 to +0.01):</p>
+                                <div class="mb-3">
+                                    <textarea id="rawInput" class="form-control bg-dark text-info border-secondary font-monospace" rows="4">[[0.00065, 0.00028, 0.00029, 0.00007, 0.00009, -0.00005, -0.00042, 0.00014], [0.00014, -0.00014, -0.00043, -0.00014, 0.00014, 0.00002, -0.00021, 0.00013], [-0.00061, -0.00022, -0.00019, -0.00016, -0.00016, -0.00035, -0.00109, -0.00068]]</textarea>
+                                </div>
+                                <button onclick="predictRaw()" class="btn btn-accent w-100 mb-3"><i class="fa-solid fa-wave-square me-2"></i> Predict From Raw Signal</button>
+                            </div>
                         </div>
                         
-                        <button onclick="predictGesture()" class="btn btn-accent w-100 mb-3"><i class="fa-solid fa-hand me-2"></i> Predict Gesture</button>
-                        
+                        <!-- Prediction Output Box -->
                         <div id="predictResultBox" class="p-3 border border-secondary rounded bg-dark d-none">
-                            <div class="text-secondary small">Prediction Output:</div>
+                            <div class="text-secondary small">Prediction Result:</div>
                             <div id="gestureOutput" class="result-badge my-1">--</div>
-                            <div class="text-secondary small">Code: <span id="classIdOutput" class="text-light">--</span></div>
+                            <div class="text-secondary small">Gesture Code: <span id="classIdOutput" class="text-light">--</span></div>
                         </div>
                     </div>
                 </div>
@@ -160,7 +188,7 @@ def dashboard():
                         <p class="text-secondary small">Ask any question about the project documentation (BM25 + Llama 3):</p>
                         
                         <div id="chatBox" class="chat-box mb-3">
-                            <div class="msg-bot">Hi Sina! Ask me anything about sEMG signal processing, feature calculation, or API endpoints.</div>
+                            <div class="msg-bot">Welcome! Ask me anything about sEMG signal processing, RMS/MAV feature extraction, or system architecture.</div>
                         </div>
 
                         <div class="input-group">
@@ -172,8 +200,9 @@ def dashboard():
             </div>
         </div>
 
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         <script>
-            async function predictGesture() {
+            async function predictFeatures() {
                 const rawVal = document.getElementById('featureInput').value;
                 const resultBox = document.getElementById('predictResultBox');
                 try {
@@ -185,11 +214,39 @@ def dashboard():
                     });
                     const data = await response.json();
                     
-                    document.getElementById('gestureOutput').innerText = data.gesture_name;
-                    document.getElementById('classIdOutput').innerText = data.gesture_code;
-                    resultBox.classList.remove('d-none');
+                    if (response.ok && data.status === "success") {
+                        document.getElementById('gestureOutput').innerText = data.gesture_name;
+                        document.getElementById('classIdOutput').innerText = data.gesture_code;
+                        resultBox.classList.remove('d-none');
+                    } else {
+                        alert("API Error: " + (data.detail || "Invalid Payload"));
+                    }
                 } catch(e) {
                     alert("Please provide a valid 16-element JSON array!");
+                }
+            }
+
+            async function predictRaw() {
+                const rawVal = document.getElementById('rawInput').value;
+                const resultBox = document.getElementById('predictResultBox');
+                try {
+                    const rawSignals = JSON.parse(rawVal);
+                    const response = await fetch('/predict-raw', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ raw_signals: rawSignals })
+                    });
+                    const data = await response.json();
+                    
+                    if (response.ok && data.status === "success") {
+                        document.getElementById('gestureOutput').innerText = data.gesture_name;
+                        document.getElementById('classIdOutput').innerText = data.gesture_code;
+                        resultBox.classList.remove('d-none');
+                    } else {
+                        alert("API Error: " + (data.detail || "Invalid Payload"));
+                    }
+                } catch(e) {
+                    alert("Please provide a valid 2D array matrix (N x 8 channels)!");
                 }
             }
 
@@ -252,11 +309,25 @@ def predict_features(request: FeatureRequest):
     if len(request.features) != 16:
         raise HTTPException(
             status_code=400,
-            detail=f"Expected 16 features (8 RMS + 8 MAV), but got {len(request.features)}",
+            detail=f"Expected exactly 16 features, but got {len(request.features)}",
         )
 
-    input_data = np.array(request.features).reshape(1, -1)
-    prediction = int(model.predict(input_data)[0])
+    features_arr = np.array(request.features)
+    
+    # Validation: strict bound checking based on actual dataset scale
+    if np.any(features_arr < 0.0) or np.any(features_arr > 0.01):
+        raise HTTPException(
+            status_code=400,
+            detail="Out of bounds! Feature values must be strictly between 0.0 and 0.01 based on trained sEMG scale."
+        )
+
+    if hasattr(model, "feature_names_in_"):
+        feature_df = pd.DataFrame([request.features], columns=model.feature_names_in_)
+        prediction = int(model.predict(feature_df)[0])
+    else:
+        input_data = features_arr.reshape(1, -1)
+        prediction = int(model.predict(input_data)[0])
+
     gesture_name = GESTURE_MAP.get(prediction, "Unknown")
 
     return {
@@ -275,18 +346,36 @@ def predict_from_raw_signal(request: RawSignalRequest):
             detail=f"Expected 2D matrix with 8 channels, got shape: {signals.shape}",
         )
 
+    # Validation: strict bound checking based on actual dataset scale
+    if np.any(signals < -0.01) or np.any(signals > 0.01):
+        raise HTTPException(
+            status_code=400,
+            detail="Out of bounds! Raw signal values must be strictly between -0.01 and +0.01 V/mV based on trained sEMG scale."
+        )
+
+    # Calculate RMS & MAV per channel
     rms_vals = np.sqrt(np.mean(signals**2, axis=0))
     mav_vals = np.mean(np.abs(signals), axis=0)
 
-    extracted_features = np.hstack([rms_vals, mav_vals]).reshape(1, -1)
-    prediction = int(model.predict(extracted_features)[0])
+    # Interleave RMS & MAV per channel (RMS_ch1, MAV_ch1, RMS_ch2, MAV_ch2, ...)
+    extracted_features = []
+    for r, m in zip(rms_vals, mav_vals):
+        extracted_features.extend([r, m])
+
+    if hasattr(model, "feature_names_in_"):
+        feature_df = pd.DataFrame([extracted_features], columns=model.feature_names_in_)
+        prediction = int(model.predict(feature_df)[0])
+    else:
+        input_data = np.array(extracted_features).reshape(1, -1)
+        prediction = int(model.predict(input_data)[0])
+
     gesture_name = GESTURE_MAP.get(prediction, "Unknown")
 
     return {
         "status": "success",
         "gesture_code": prediction,
         "gesture_name": gesture_name,
-        "extracted_features_count": extracted_features.shape[1],
+        "extracted_features_count": 16,
     }
 
 @app.post("/rag/ask", tags=["RAG Intelligent Assistant"])
