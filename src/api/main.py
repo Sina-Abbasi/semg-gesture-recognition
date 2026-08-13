@@ -3,6 +3,7 @@ import joblib
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from pydantic import BaseModel, Field
 from rag.rag_engine import ProjectRAGEngine
 
@@ -20,8 +21,8 @@ app = FastAPI(
     * **📚 RAG Assistant**: Ask any technical question about signal processing, feature calculation, or architecture.
     """,
     version="2.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None,  # Custom dark theme route enabled below
+    redoc_url=None
 )
 
 # ----------------------------------------------------
@@ -92,50 +93,156 @@ class RAGQueryRequest(BaseModel):
 # ----------------------------------------------------
 # 5. Interactive UI Dashboard at Root `/`
 # ----------------------------------------------------
-@app.get("/", response_class=HTMLResponse)
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def dashboard():
     return """
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>sEMG AI Control Center</title>
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
         <style>
-            body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, sans-serif; }
-            main { max-width: 900px; margin: 40px auto; padding: 20px; }
-            .card { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 24px; border: 1px solid #334155; }
-            h1 { color: #38bdf8; font-weight: 800; }
-            h3 { color: #94a3b8; }
-            .badge { background: #0284c7; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8em; }
-            a.button { display: inline-block; background: #0284c7; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; }
-            a.button:hover { background: #0369a1; }
+            body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+            .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+            .btn-accent { background: linear-gradient(135deg, #0284c7, #0369a1); color: white; font-weight: 600; border: none; }
+            .btn-accent:hover { background: linear-gradient(135deg, #0369a1, #075985); color: white; }
+            .btn-success-gradient { background: linear-gradient(135deg, #16a34a, #15803d); color: white; font-weight: 600; border: none; }
+            .badge-custom { background-color: #334155; color: #38bdf8; font-weight: 500; font-size: 0.85rem; }
+            .chat-box { height: 300px; overflow-y: auto; background-color: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 15px; }
+            .msg-user { background-color: #0284c7; color: white; border-radius: 12px 12px 0 12px; padding: 8px 14px; margin-bottom: 10px; width: fit-content; max-width: 80%; float: right; clear: both; }
+            .msg-bot { background-color: #334155; color: #f8fafc; border-radius: 12px 12px 12px 0; padding: 8px 14px; margin-bottom: 10px; width: fit-content; max-width: 80%; float: left; clear: both; }
+            .result-badge { font-size: 1.3rem; font-weight: bold; color: #38bdf8; }
         </style>
     </head>
     <body>
-        <main>
-            <div class="card" style="text-align: center;">
-                <h1>🦾 sEMG Gesture AI & RAG Control Center</h1>
-                <p>Real-Time Biosignal Processing & Intelligent Documentation Retrieval Engine</p>
-                <p><span class="badge">API v2.0.0</span> &nbsp; <span class="badge" style="background:#16a34a">Status: Online</span></p>
-                <div style="margin-top: 20px;">
-                    <a href="/docs" class="button">🚀 Open Swagger Interactive Docs</a>
-                    <a href="/redoc" class="button" style="background:#475569; margin-left:10px;">📄 View ReDoc</a>
+        <div class="container my-5" style="max-width: 950px;">
+            <!-- Header Banner -->
+            <div class="card p-4 mb-4 text-center">
+                <h1 class="fw-bold text-info mb-2">🦾 sEMG Gesture AI & RAG Control Center</h1>
+                <p class="text-secondary mb-3">Real-Time Biosignal Processing & Intelligent Documentation Retrieval Engine</p>
+                <div>
+                    <span class="badge badge-custom px-3 py-2 me-2"><i class="fa-solid fa-code me-1"></i> API v2.0.0</span>
+                    <span class="badge badge-custom px-3 py-2 me-3" style="color: #4ade80;"><i class="fa-solid fa-circle-check text-success me-1"></i> Status: Online</span>
+                    <a href="/docs" class="btn btn-sm btn-outline-info me-2"><i class="fa-solid fa-rocket me-1"></i> Swagger Docs</a>
+                    <a href="/redoc" class="btn btn-sm btn-outline-secondary"><i class="fa-solid fa-file-lines me-1"></i> ReDoc</a>
                 </div>
             </div>
 
-            <div class="card">
-                <h3>⚡ Active Endpoints Summary</h3>
-                <ul>
-                    <li><b>POST <code>/predict</code></b>: Direct gesture classification via 16 time-domain features.</li>
-                    <li><b>POST <code>/predict-raw</code></b>: Automatic feature extraction (RMS + MAV) & prediction from raw signals.</li>
-                    <li><b>POST <code>/rag/ask</code></b>: Natural language QA over project reports & README (Powered by Llama 3).</li>
-                </ul>
+            <div class="row g-4">
+                <!-- Section 1: Live Gesture Classification Test -->
+                <div class="col-md-6">
+                    <div class="card h-100 p-4">
+                        <h4 class="fw-bold text-info mb-3"><i class="fa-solid fa-bolt me-2"></i>Live Gesture Predictor</h4>
+                        <p class="text-secondary small">Test the ML model directly using 16 time-domain features (8 RMS + 8 MAV):</p>
+                        
+                        <div class="mb-3">
+                            <label class="form-label text-light small">Features Array (16 values):</label>
+                            <textarea id="featureInput" class="form-control bg-dark text-info border-secondary font-monospace" rows="4">[0.24, 0.18, 0.35, 0.42, 0.12, 0.29, 0.31, 0.20, 0.15, 0.11, 0.22, 0.28, 0.08, 0.19, 0.21, 0.14]</textarea>
+                        </div>
+                        
+                        <button onclick="predictGesture()" class="btn btn-accent w-100 mb-3"><i class="fa-solid fa-hand me-2"></i> Predict Gesture</button>
+                        
+                        <div id="predictResultBox" class="p-3 border border-secondary rounded bg-dark d-none">
+                            <div class="text-secondary small">Prediction Output:</div>
+                            <div id="gestureOutput" class="result-badge my-1">--</div>
+                            <div class="text-secondary small">Code: <span id="classIdOutput" class="text-light">--</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Interactive RAG AI Chatbot -->
+                <div class="col-md-6">
+                    <div class="card h-100 p-4">
+                        <h4 class="fw-bold text-warning mb-3"><i class="fa-solid fa-robot me-2"></i>RAG Knowledge Assistant</h4>
+                        <p class="text-secondary small">Ask any question about the project documentation (BM25 + Llama 3):</p>
+                        
+                        <div id="chatBox" class="chat-box mb-3">
+                            <div class="msg-bot">Hi Sina! Ask me anything about sEMG signal processing, feature calculation, or API endpoints.</div>
+                        </div>
+
+                        <div class="input-group">
+                            <input type="text" id="ragQuestion" class="form-control bg-dark text-light border-secondary" placeholder="e.g. How is RMS calculated?" onkeydown="if(event.key==='Enter') askRAG()">
+                            <button onclick="askRAG()" class="btn btn-success-gradient"><i class="fa-solid fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </main>
+        </div>
+
+        <script>
+            async function predictGesture() {
+                const rawVal = document.getElementById('featureInput').value;
+                const resultBox = document.getElementById('predictResultBox');
+                try {
+                    const features = JSON.parse(rawVal);
+                    const response = await fetch('/predict', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ features: features })
+                    });
+                    const data = await response.json();
+                    
+                    document.getElementById('gestureOutput').innerText = data.gesture_name;
+                    document.getElementById('classIdOutput').innerText = data.gesture_code;
+                    resultBox.classList.remove('d-none');
+                } catch(e) {
+                    alert("Please provide a valid 16-element JSON array!");
+                }
+            }
+
+            async function askRAG() {
+                const qInput = document.getElementById('ragQuestion');
+                const chatBox = document.getElementById('chatBox');
+                const question = qInput.value.trim();
+                if(!question) return;
+
+                chatBox.innerHTML += `<div class="msg-user">${question}</div>`;
+                qInput.value = '';
+                chatBox.scrollTop = chatBox.scrollHeight;
+
+                const loadingId = 'load-' + Date.now();
+                chatBox.innerHTML += `<div id="${loadingId}" class="msg-bot">Thinking... 🧠</div>`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+
+                try {
+                    const response = await fetch('/rag/ask', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ question: question })
+                    });
+                    const data = await response.json();
+                    document.getElementById(loadingId).innerText = data.answer;
+                } catch(e) {
+                    document.getElementById(loadingId).innerText = "Error connecting to RAG assistant!";
+                }
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        </script>
     </body>
     </html>
     """
+
+# ----------------------------------------------------
+# Custom Dark Theme for Swagger UI & ReDoc
+# ----------------------------------------------------
+@app.get("/docs", include_in_schema=False)
+def custom_swagger_ui_html():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+        swagger_ui_parameters={"deepLinking": True, "syntaxHighlight.theme": "monokai"}
+    )
+
+@app.get("/redoc", include_in_schema=False)
+def custom_redoc_html():
+    return get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - ReDoc"
+    )
 
 # ----------------------------------------------------
 # 6. Endpoints

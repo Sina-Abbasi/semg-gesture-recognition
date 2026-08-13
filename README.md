@@ -51,7 +51,7 @@ You do not need to install Python or any dependencies manually. Simply pull and 
 docker run -d -p 8000:8000 --env-file .env --name semg_app sina22sas/semg-ai-engine:v2
 
 After running the container, open your browser and go to:
-http://localhost:8000/docs to test the API via Swagger UI.
+http://localhost:8000 to test the API via Swagger UI.
 
 
 ## Supported Gestures
